@@ -64,9 +64,11 @@ public class DependenciesModelPlugin implements Plugin<Project> {
                     if (configuration != null) {
                         ResolvedComponentResult root = configuration.getIncoming().getResolutionResult().getRoot();
                         dependencies.put(conf, convert(root));
+                    } else {
+                        System.out.println("  /!\\ Didn't find " + conf);
                     }
                 });
-                model.put(project.getPath(), dependencies);
+                model.put(p.getPath(), dependencies);
             });
             return new DefaultDependenciesModel(model);
         }
@@ -84,6 +86,8 @@ public class DependenciesModelPlugin implements Plugin<Project> {
                 e.getDependencies().forEach(d -> {
                     if (d instanceof ResolvedDependencyResult) {
                         queue.add(((ResolvedDependencyResult) d).getSelected());
+                    } else {
+                        System.out.println("  /!\\ Unresolved dependency " + d);
                     }
                 });
             }
