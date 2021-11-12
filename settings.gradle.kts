@@ -11,3 +11,4 @@ rootProject.name = "gradle-helper"
 include("model")
 include("model-plugin")
 include("downloader")
+include("micronaut-tool")

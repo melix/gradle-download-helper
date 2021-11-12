@@ -19,6 +19,7 @@ import gradle.helper.model.DependenciesModel;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.artifacts.result.ResolvedComponentResult;
 import org.gradle.api.artifacts.result.ResolvedDependencyResult;
 import org.gradle.tooling.provider.model.ToolingModelBuilder;
@@ -29,6 +30,7 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,6 +50,8 @@ public class DependenciesModelPlugin implements Plugin<Project> {
 
     private static class DependenciesModelBuilder implements ToolingModelBuilder {
 
+        public static final List<String> DEFAULT_CONFIGS = Arrays.asList("compileClasspath", "runtimeClasspath");
+
         @Override
         public boolean canBuild(String modelName) {
             return DependenciesModel.class.getName().equals(modelName);
@@ -59,7 +63,13 @@ public class DependenciesModelPlugin implements Plugin<Project> {
             project.getAllprojects().forEach(p -> {
                 System.out.println("Analyzing " + p);
                 Map<String, String> dependencies = new HashMap<>();
-                Arrays.asList("compileClasspath", "runtimeClasspath").forEach(conf -> {
+                List<String> configs = DEFAULT_CONFIGS;
+                Object overrideConfigs = project.findProperty("model.configurations");
+                if (overrideConfigs instanceof CharSequence) {
+                    configs = Arrays.asList(overrideConfigs.toString().split(","));
+                }
+                configs.forEach(conf -> {
+                    System.out.println("Processing configuration = " + conf);
                     Configuration configuration = p.getConfigurations().findByName(conf);
                     if (configuration != null) {
                         ResolvedComponentResult root = configuration.getIncoming().getResolutionResult().getRoot();
@@ -82,7 +92,9 @@ public class DependenciesModelPlugin implements Plugin<Project> {
         while (!queue.isEmpty()) {
             ResolvedComponentResult e = queue.pop();
             if (visited.add(e)) {
-                sb.append(DEPENDENCY_PREFIX).append(e.getModuleVersion()).append("\n");
+                if (e.getVariants().stream().anyMatch(v -> v.getOwner() instanceof ModuleComponentIdentifier)) {
+                    sb.append(DEPENDENCY_PREFIX).append(e.getModuleVersion()).append("\n");
+                }
                 e.getDependencies().forEach(d -> {
                     if (d instanceof ResolvedDependencyResult) {
                         queue.add(((ResolvedDependencyResult) d).getSelected());

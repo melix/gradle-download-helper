@@ -12,6 +12,7 @@ import picocli.CommandLine;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,7 +23,9 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,7 +34,12 @@ import static gradle.helper.plugin.DependenciesModelPlugin.DEPENDENCY_PREFIX;
 @CommandLine.Command
 public class App implements Runnable {
     private static final Pattern LINE_PATTERN = Pattern.compile(Pattern.quote(DEPENDENCY_PREFIX) + "(?:(.+?):(.+?):(.+))");
-    private static final Pattern REPO_ARTIFACT = Pattern.compile("<a href=\"(.+?)\" title=");
+    private static final Pattern REPO_ARTIFACT = Pattern.compile("<a href=\"(.+?)\"");
+    private static final List<String> REPOS = Arrays.asList(
+            "https://repo.maven.apache.org/maven2/",
+            "https://plugins.gradle.org/m2/",
+            "https://repo.gradle.org/gradle/libs-releases/"
+    );
 
     @CommandLine.Option(
             names = {"-b", "--build-directory"},
@@ -107,21 +115,38 @@ public class App implements Runnable {
                         File f = new File(repoDirectory, path);
                         if (!f.isDirectory()) {
                             try {
-                                URL url = new URL("https://repo1.maven.org/maven2/" + path);
-                                try (InputStream in = url.openStream()) {
-                                    BufferedReader reader = new BufferedReader(new InputStreamReader(in));
-                                    String line;
-                                    while ((line = reader.readLine()) != null) {
-                                        Matcher artifactMatcher = REPO_ARTIFACT.matcher(line);
-                                        if (artifactMatcher.find()) {
-                                            mkdirs(f);
-                                            String fileName = artifactMatcher.group(1);
-                                            URL artifactURI = new URL("https://repo1.maven.org/maven2/" + path + "/" + fileName);
-                                            System.out.println("Downloading = " + artifactURI);
-                                            try (InputStream artifactIn = artifactURI.openStream()) {
-                                                Files.copy(artifactIn, new File(f, fileName).toPath());
+                                List<String> tried = new ArrayList<>();
+                                for (String repo : REPOS) {
+                                    URL url = new URL(repo + path);
+                                    try (InputStream in = url.openStream()) {
+                                        BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+                                        String line;
+                                        while ((line = reader.readLine()) != null) {
+                                            Matcher artifactMatcher = REPO_ARTIFACT.matcher(line);
+                                            if (artifactMatcher.find()) {
+                                                mkdirs(f);
+                                                String fileName = artifactMatcher.group(1);
+                                                if (fileName.contains("..")) {
+                                                    continue;
+                                                }
+                                                URL artifactURI = new URL(repo + path + "/" + fileName);
+                                                System.out.println("Downloading = " + artifactURI);
+                                                try (InputStream artifactIn = artifactURI.openStream()) {
+                                                    Files.copy(artifactIn, new File(f, fileName).toPath());
+                                                } catch (Exception ex) {
+                                                    tried.add(artifactURI.toString());
+                                                }
                                             }
                                         }
+                                        tried.clear();
+                                        break;
+                                    } catch (FileNotFoundException fnfe) {
+                                        tried.add(url.toString());
+                                    }
+                                }
+                                if (!tried.isEmpty()) {
+                                    for (String url : tried) {
+                                        System.out.println(m.group(0) + " not found at " + url);
                                     }
                                 }
                             } catch (IOException e) {
